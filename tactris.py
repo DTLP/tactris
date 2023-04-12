@@ -10,6 +10,13 @@ HEIGHT = 40
 MARGIN = 1
 
 # Define functions
+def build_grid():
+    global grid, prev_grid
+
+    grid = []
+    for row in range(10):
+        grid.append([(255, 255, 255)] * 10)
+
 def generate_block():
     shapes = [
         [[0, 0], [1, 0], [2, 0], [3, 0]],  # I shape
@@ -65,9 +72,7 @@ def reset_game():
     current_block = generate_block()
     next_block = generate_block()
     score = 0
-    grid = []
-    for row in range(10):
-        grid.append([0] * 10)
+    build_grid()
 		
     # Update the screen
     pygame.display.flip()
@@ -86,9 +91,7 @@ pygame.display.set_caption("Tactris")
 font = pygame.font.Font(None, 36)
 
 # Initialize the grid
-grid = []
-for row in range(10):
-    grid.append([0] * 10)
+build_grid()
 
 # Initialize the current block and position
 current_block = generate_block()
