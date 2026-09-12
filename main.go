@@ -406,7 +406,8 @@ func (g *Game) sceneMouse() (float64, float64) {
 
 // cellAt returns the board cell under the given scene coordinates.
 func cellAt(x, y float64) (row, col int, ok bool) {
-	if x < 0 || y < 0 || x >= float64(boardPx) || y >= float64(boardPx) {
+	limit := float64(cellStep * boardSize)
+	if x < 0 || y < 0 || x >= limit || y >= limit {
 		return 0, 0, false
 	}
 	return int(y) / cellStep, int(x) / cellStep, true
