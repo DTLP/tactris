@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"log"
+	"math"
 	"math/rand/v2"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -22,20 +23,21 @@ const (
 )
 
 var (
-	black = color.RGBA{0, 0, 0, 255}
-	white = color.RGBA{255, 255, 255, 255}
-	grey  = color.RGBA{100, 100, 150, 255}
-	lgrey = color.RGBA{215, 215, 230, 255}
-	green = color.RGBA{0, 255, 0, 255}
+	cellStep = cellSize + margin
+	boardPx  = cellStep*boardSize + margin
+	designW  = cellStep*2*boardSize + margin
+	designH  = boardPx
 )
 
 var (
-	windowW = (margin+cellSize)*20 + margin
-	windowH = (margin+cellSize)*10 + margin
+	black     = color.RGBA{0, 0, 0, 255}
+	white     = color.RGBA{255, 255, 255, 255}
+	darkGrey  = color.RGBA{25, 25, 30, 255}
+	ghostBlue = color.RGBA{0xAA, 0xDD, 0xFF, 255}
 )
 
-var undoRect = image.Rect(windowW-350, windowH-80, windowW-350+140, windowH-80+60)
-var resetRect = image.Rect(windowW-200, windowH-80, windowW-200+140, windowH-80+60)
+var undoRect = image.Rect(designW-350, designH-80, designW-350+140, designH-80+60)
+var resetRect = image.Rect(designW-200, designH-80, designW-200+140, designH-80+60)
 
 // Each block is a set of [row, col] offsets relative to its anchor cell.
 var blocks = [][][2]int{
@@ -77,6 +79,11 @@ type Game struct {
 	prevScore       int
 	currentPosition [2]int
 	nextPosition    [2]int
+
+	canvas  *ebiten.Image
+	scale   float64
+	offsetX float64
+	offsetY float64
 }
 
 func newGame() *Game {
@@ -191,12 +198,27 @@ func (g *Game) undoStep() {
 	g.currentBlock = g.prevBlock
 }
 
+// sceneMouse returns the mouse position in design coordinates.
+func (g *Game) sceneMouse() (float64, float64) {
+	mx, my := ebiten.CursorPosition()
+	x := (float64(mx) - g.offsetX) / g.scale
+	y := (float64(my) - g.offsetY) / g.scale
+	return x, y
+}
+
+// cellAt returns the board cell under the given scene coordinates.
+func cellAt(x, y float64) (row, col int, ok bool) {
+	if x < 0 || y < 0 || x >= float64(boardPx) || y >= float64(boardPx) {
+		return 0, 0, false
+	}
+	return int(y) / cellStep, int(x) / cellStep, true
+}
+
 func (g *Game) updateGhost() {
-	x, y := ebiten.CursorPosition()
+	x, y := g.sceneMouse()
 	g.ghostGrid = emptyGrid()
-	row := y / (cellSize + margin)
-	col := x / (cellSize + margin)
-	if row < 0 || row >= boardSize || col < 0 || col >= boardSize {
+	row, col, ok := cellAt(x, y)
+	if !ok {
 		return
 	}
 	for _, b := range g.currentBlock {
@@ -212,8 +234,8 @@ func (g *Game) Update() error {
 	g.updateGhost()
 
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		x, y := ebiten.CursorPosition()
-		pos := image.Pt(x, y)
+		x, y := g.sceneMouse()
+		pos := image.Pt(int(x), int(y))
 
 		switch {
 		case pos.In(resetRect):
@@ -221,8 +243,10 @@ func (g *Game) Update() error {
 		case pos.In(undoRect):
 			g.undoStep()
 		default:
-			row := y / (cellSize + margin)
-			col := x / (cellSize + margin)
+			row, col, ok := cellAt(x, y)
+			if !ok {
+				return nil
+			}
 			position := [2]int{row, col}
 			if g.canPlaceBlock(g.currentBlock, position) {
 				g.addBlock(g.currentBlock, position)
@@ -268,59 +292,89 @@ func drawTextCentered(screen *ebiten.Image, s string, r image.Rectangle, c color
 }
 
 func drawButton(screen *ebiten.Image, r image.Rectangle, label string) {
-	drawRect(screen, r.Min.X, r.Min.Y, r.Dx(), r.Dy(), green)
-	drawRect(screen, r.Min.X-10, r.Min.Y-10, r.Dx()+20, r.Dy()+20, black)
+	drawRect(screen, r.Min.X, r.Min.Y, r.Dx(), r.Dy(), darkGrey)
 	vector.StrokeRect(screen, float32(r.Min.X), float32(r.Min.Y), float32(r.Dx()), float32(r.Dy()), 2, white, false)
 	drawTextCentered(screen, label, r, white)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(black)
+	if g.canvas == nil {
+		g.canvas = ebiten.NewImage(designW, designH)
+	}
+	canvas := g.canvas
+	canvas.Fill(black)
 
-	// Draw the board.
+	// Draw the field: a dark-grey grid on a black background.
+	drawRect(canvas, 0, 0, boardPx, boardPx, darkGrey)
 	for row := 0; row < boardSize; row++ {
 		for col := 0; col < boardSize; col++ {
-			c := white
-			if g.ghostGrid[row][col] {
-				c = lgrey
+			drawRect(canvas, cellStep*col+margin, cellStep*row+margin, cellSize, cellSize, black)
+		}
+	}
+	// Draw placed shapes (white) and the ghost shape (light blue).
+	for row := 0; row < boardSize; row++ {
+		for col := 0; col < boardSize; col++ {
+			var c color.Color
+			switch {
+			case g.grid[row][col]:
+				c = white
+			case g.ghostGrid[row][col]:
+				c = ghostBlue
+			default:
+				continue
 			}
-			if g.grid[row][col] {
-				c = grey
-			}
-			drawRect(screen, (margin+cellSize)*col+margin, (margin+cellSize)*row+margin, cellSize, cellSize, c)
+			drawRect(canvas, cellStep*col+margin, cellStep*row+margin, cellSize, cellSize, c)
 		}
 	}
 
+	// Draw the right-hand panel.
+	drawRect(canvas, boardPx, 0, designW-boardPx, designH, darkGrey)
+
 	// Draw the current block preview.
-	drawText(screen, "Current:", windowW-400, windowH-400, white)
+	drawText(canvas, "Current:", designW-400, designH-400, white)
 	for _, b := range g.currentBlock {
 		row := g.currentPosition[0] + b[0]
 		col := g.currentPosition[1] + b[1]
-		drawRect(screen, (margin+cellSize)*col+margin+5, (margin+cellSize)*row+margin, cellSize, cellSize, white)
+		drawRect(canvas, cellStep*col+margin+5, cellStep*row+margin, cellSize, cellSize, white)
 	}
 
 	// Draw the next block preview.
-	drawText(screen, "Next:", windowW-200, windowH-400, white)
+	drawText(canvas, "Next:", designW-200, designH-400, white)
 	for _, b := range g.nextBlock {
 		row := g.nextPosition[0] + b[0]
 		col := g.nextPosition[1] + b[1]
-		drawRect(screen, (margin+cellSize)*col+margin+5, (margin+cellSize)*row+margin, cellSize, cellSize, white)
+		drawRect(canvas, cellStep*col+margin+5, cellStep*row+margin, cellSize, cellSize, white)
 	}
 
 	// Draw the score.
-	drawText(screen, fmt.Sprintf("Score: %d", g.score), windowW-400, windowH-120, white)
+	drawText(canvas, fmt.Sprintf("Score: %d", g.score), designW-400, designH-120, white)
 
 	// Draw the buttons.
-	drawButton(screen, undoRect, "UNDO")
-	drawButton(screen, resetRect, "RESET")
+	drawButton(canvas, undoRect, "UNDO")
+	drawButton(canvas, resetRect, "RESET")
+
+	// Scale and center the canvas in the window.
+	screen.Fill(black)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(g.scale, g.scale)
+	op.GeoM.Translate(g.offsetX, g.offsetY)
+	screen.DrawImage(canvas, op)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return windowW, windowH
+	scale := math.Min(float64(outsideWidth)/float64(designW), float64(outsideHeight)/float64(designH))
+	if scale < 0.01 {
+		scale = 0.01
+	}
+	g.scale = scale
+	g.offsetX = (float64(outsideWidth) - float64(designW)*scale) / 2
+	g.offsetY = (float64(outsideHeight) - float64(designH)*scale) / 2
+	return outsideWidth, outsideHeight
 }
 
 func main() {
-	ebiten.SetWindowSize(windowW, windowH)
+	ebiten.SetWindowSize(designW, designH)
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle("Tactris")
 	if err := ebiten.RunGame(newGame()); err != nil {
 		log.Fatal(err)
