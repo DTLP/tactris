@@ -26,6 +26,7 @@ const (
 	panelWidth  = 230
 	previewCell = 20
 	previewStep = 21
+	startScale  = 1.5
 
 	highScoreFile = "highscore.txt"
 )
@@ -590,7 +591,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func main() {
-	ebiten.SetWindowSize(designW, designH)
+	ebiten.SetWindowSize(int(float64(designW)*startScale), int(float64(designH)*startScale))
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle("Tactris")
 	g := newGame()
