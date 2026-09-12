@@ -325,7 +325,7 @@ func (g *Game) clearLines() int {
 		} else {
 			g.grid = append([][boardSize]cellState{row}, g.grid...)
 			for i := range rows {
-				if rows[i] != r {
+				if rows[i] < r {
 					rows[i]++
 				}
 			}
@@ -361,7 +361,7 @@ func (g *Game) clearLines() int {
 			}
 		} else {
 			for i := range cols {
-				if cols[i] != ci {
+				if cols[i] < ci {
 					cols[i]++
 				}
 			}

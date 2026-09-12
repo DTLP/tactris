@@ -179,6 +179,46 @@ func TestMultiLineScore(t *testing.T) {
 	}
 }
 
+func TestClearMultipleColumns(t *testing.T) {
+	g := newGame()
+	rows := []string{
+		"ooooxxxooo",
+		"oooxxxxooo",
+		"ooooxxxooo",
+		"ooooxxxooo",
+		"ooooxxoooo",
+		"ooooxxxooo",
+		"ooooxxxooo",
+		"ooooxxxooo",
+		"ooooxxxooo",
+		"ooooxxxxoo",
+	}
+	for r, s := range rows {
+		for c := 0; c < boardSize; c++ {
+			if s[c] == 'x' {
+				g.grid[r][c] = statePlaced
+			}
+		}
+	}
+	if n := g.clearLines(); n != 2 {
+		t.Fatalf("clearLines() = %d, want 2", n)
+	}
+	// No full column may survive the clear, otherwise the next move would
+	// spuriously re-clear it.
+	for c := 0; c < boardSize; c++ {
+		full := true
+		for r := 0; r < boardSize; r++ {
+			if g.grid[r][c] != statePlaced {
+				full = false
+				break
+			}
+		}
+		if full {
+			t.Fatalf("column %d still full after clearing", c)
+		}
+	}
+}
+
 func TestGameOver(t *testing.T) {
 	g := newGame()
 	for r := 0; r < boardSize; r++ {
